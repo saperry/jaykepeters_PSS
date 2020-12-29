@@ -6,7 +6,7 @@
 YOUTUBE=False
 
 me=`basename "$0"`
-VERSION="1.6.1" # Fixed IP Address for Duckduckgo. Added SafeSearch for pixabay..., also fixed spelling error 
+VERSION="1.6.2" # Added dynamic lookup of safe host IP addresses 
 file="/tmp/safesearch.txt"
 conf="/etc/dnsmasq.d/05-restrict.conf"
 url="https://www.google.com/supported_domains"
@@ -17,13 +17,15 @@ maxRuns=10
 
 ## Arrays
 # Host Records!!!
-hostRecords=(
-    "host-record=forcesafesearch.google.com,216.239.38.120"
-    "host-record=safe.duckduckgo.com,54.241.17.246"
-    "host-record=restrict.youtube.com,216.239.38.120"
-    "host-record=strict.bing.com,204.79.197.220"
-    "host-record=safesearch.pixabay.com,176.9.158.70"
+safeHosts=(
+    "forcesafesearch.google.com"
+    "safe.duckduckgo.com"
+    "restrict.youtube.com"
+    "restrict.bing.com"
+    "safesearch.pixabay.com"
 )
+# hostRecords are dynamically resolved using safeHosts
+hostRecords=()
 ytSS=(
    "cname=www.youtube.com,restrict.youtube.com"
    "cname=m.youtube.com,restrict.youtube.com"
@@ -122,7 +124,32 @@ preCheck() {
         logger all Removing "$file"
         rm "$file"
     fi
+    
+    # Check for dig
+    if ! command -v dig &> /dev/null
+    then
+        echo "dig command line could not be found. To install on a Raspberry Pi, sudo apt-get install dnsutils"
+        exit -1
+    fi    
 }
+
+resolveHostRecords() {
+    # lookup ip addresses for all entries in safeHosts and generate
+    # an entry for hiostRecords
+    logger all Resolving IP Addresses for safeHosts
+    
+    # just incase it is run more then once, clear down any existing entries
+    hostRecords=()
+    
+    for line in "${safeHosts[@]}"; do
+        # uses dig to install on a pi sudo apt-get install dnsutils
+        ips=$(dig $line +short | grep '^[.0-9]*$')
+        for  ip in $ips; do
+            hostRecords+=("host-record=$line,$ip")
+        done
+    done
+}
+
 
 generate() {
     # Download List into an Array
@@ -197,6 +224,7 @@ generate() {
 
 main() {
     preCheck
+    resolveHostRecords
     generate
 }
 
